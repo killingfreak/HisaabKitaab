@@ -11,6 +11,10 @@ from app.schemas import CurrentUser, LoginRequest, TokenResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from app.routers.items import router as items_router
 from app.routers.parties import router as parties_router
+from app.routers.transactions import router as transactions_router
+
+from fastapi.middleware.cors import CORSMiddleware
+from app.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -36,8 +40,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Without this, every browser-based frontend (web, and Tauri/Capacitor's
+# dev servers) gets silently blocked by the browser's own CORS enforcement
+# before the request even reaches an endpoint — confirmed by actually
+# testing this API from a real browser, not just FastAPI's TestClient
+# (which bypasses CORS entirely, which is why this gap went unnoticed
+# until the frontend was built). allow_origins is read from Settings so
+# it's just an env var change to add your deployed frontend's URL later.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(parties_router)
 app.include_router(items_router)
+app.include_router(transactions_router)
 
 
 @app.post("/login", response_model=TokenResponse, tags=["auth"])

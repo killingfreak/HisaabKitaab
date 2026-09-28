@@ -18,14 +18,16 @@ import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
+from app.bill_generator import build_bill_pdf
 from app.database import get_db
-from app.models import Item, Party, PaymentStatus, Transaction, TransactionItem
+from app.models import Item, Party, PaymentStatus, Tenant, Transaction, TransactionItem
 from app.schemas import CurrentUser, TransactionCreate, TransactionRead
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -255,3 +257,68 @@ async def get_transaction(
             status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found"
         )
     return transaction
+
+
+@router.get("/{transaction_id}/bill", response_class=StreamingResponse)
+async def get_transaction_bill(
+    transaction_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """
+    Render this transaction as a downloadable PDF bill.
+
+    NOT GST-compliant yet (no sequential invoice numbering, no HSN/SAC
+    codes) — see bill_generator.py's module docstring. Fine for a
+    printed customer receipt today; revisit before this needs to survive
+    a GST audit.
+    """
+    result = await db.execute(
+        select(Transaction)
+        .where(
+            Transaction.id == transaction_id,
+            Transaction.tenant_id == current_user.tenant_id,
+        )
+        .options(selectinload(Transaction.items))
+    )
+    transaction = result.scalar_one_or_none()
+    if transaction is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found"
+        )
+
+    # Tenant always exists for an authenticated user (their JWT's tenant_id
+    # is only ever minted for a real Tenant row at login), so no 404 guard needed.
+    tenant_result = await db.execute(
+        select(Tenant).where(Tenant.id == current_user.tenant_id)
+    )
+    tenant = tenant_result.scalar_one()
+
+    party: Party | None = None
+    if transaction.party_id is not None:
+        party_result = await db.execute(
+            select(Party).where(Party.id == transaction.party_id)
+        )
+        party = party_result.scalar_one_or_none()
+
+    # Live-fetch base_unit for display (see bill_generator.py docstring for
+    # why this isn't a TransactionItem snapshot column).
+    item_ids = {line.item_id for line in transaction.items}
+    unit_result = await db.execute(
+        select(Item.id, Item.base_unit).where(Item.id.in_(item_ids))
+    )
+    unit_by_item_id = {item_id: base_unit for item_id, base_unit in unit_result.all()}
+
+    pdf_buffer = build_bill_pdf(
+        transaction=transaction,
+        tenant=tenant,
+        party=party,
+        unit_by_item_id=unit_by_item_id,
+    )
+
+    filename = f"bill-{str(transaction.id)[:8]}.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
