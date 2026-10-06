@@ -49,7 +49,9 @@ class Settings(BaseSettings):
     # (Capacitor/Tauri production builds) typically load over a custom
     # scheme rather than http(s), which needs handling separately when
     # you get to that phase — don't assume this list covers it yet.
-    CORS_ALLOWED_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+    CORS_ALLOWED_ORIGINS: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,https://hisaabkitaab-fe.pages.dev"
+    )
 
     @property
     def cors_origins_list(self) -> list[str]:
