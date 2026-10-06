@@ -1,7 +1,7 @@
 # Local development only — brings up the backend container connected to Supabase.
 # Run from inside backend/:
 #     docker compose up --build
-# Backend reachable at http://localhost:8000. 
+# Backend reachable at http://localhost:8000.
 
 services:
   backend:
@@ -10,13 +10,13 @@ services:
     restart: unless-stopped
     # depends_on: postgres -> REMOVED
     environment:
-      # Replace this fallback string with your actual Supabase URI, 
+      # Replace this fallback string with your actual Supabase URI,
       # or simply define DATABASE_URL in a .env file in the same directory.
-      DATABASE_URL: postgresql+asyncpg://postgres.vlqgprezoimynlqrpxam:Mahaveer%401307@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres
+      DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-CHANGE-ME-INSECURE-DEV-ONLY-SECRET}
       JWT_ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 720
-      CORS_ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      CORS_ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,https://hisaabkitaab-fe.pages.dev
       PYTHONPATH: /app
     ports:
       - "8000:8000"
